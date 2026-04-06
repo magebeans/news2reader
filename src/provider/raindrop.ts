@@ -1,5 +1,5 @@
-import express, { Express, Request, Response } from "express"; // Import express itself for urlencoded
-import axios from "axios";
+import { Express, Request, Response } from "express";
+import got from "got";
 import * as fs from "fs";
 import * as path from "path";
 import { OPDSFeed } from "../opds.js";
@@ -26,7 +26,6 @@ interface FeedDescription {
   name: string;
   id: string;
   description: string;
-  // searchParams?: any; // Example property
 }
 
 const RAINDROP_API_BASE_URL = "https://api.raindrop.io/rest/v1";
@@ -68,7 +67,7 @@ export default class RaindropProvider {
         title: "Raindrop.io",
         links: {
           self: "/opds/provider/raindrop",
-          start: "/opds", // Assuming /opds is the main catalog start
+          start: "/opds",
         },
       });
 
@@ -76,19 +75,19 @@ export default class RaindropProvider {
         opdsFeed.addEntry({
           title: "Raindrop.io Not Configured",
           id: "raindrop:error:notconfigured",
-          link: "/opds/provider/raindrop", 
+          link: "/opds/provider/raindrop",
           content: "Raindrop.io is not configured. Please visit the main application page (/) to set it up.",
         });
       } else {
         try {
-          const collections = await this.getCollections(); 
+          const collections = await this.getCollections();
 
           if (collections.length > 0) {
-            collections.forEach(collection => { 
+            collections.forEach(collection => {
               opdsFeed.addEntry({
                 title: collection.name,
-                id: `raindrop:${collection.id}`, 
-                link: `/opds/provider/raindrop/${collection.id}`, 
+                id: `raindrop:${collection.id}`,
+                link: `/opds/provider/raindrop/${collection.id}`,
                 content: collection.description || `Items from ${collection.name}`,
               });
             });
@@ -116,31 +115,31 @@ export default class RaindropProvider {
     app.get("/opds/provider/raindrop/:feedId", async (req: Request, res: Response) => {
       const feedIdFromPath = req.params.feedId;
       const effectiveFeedId = feedIdFromPath === "all" ? "-1" : feedIdFromPath;
-      const currentPage = parseInt(req.query.page as string, 10) || 0; // 0-indexed
-      const itemsPerPage = 25; // Items per OPDS page
+      const currentPage = parseInt(req.query.page as string, 10) || 0;
+      const itemsPerPage = 25;
 
-      let collectionName = `Collection ${effectiveFeedId}`; 
+      let collectionName = `Collection ${effectiveFeedId}`;
 
       if (this.isConnected()) {
-        const collections = await this.getCollections(); 
+        const collections = await this.getCollections();
         const foundCollection = collections.find(c => c.id.toString() === effectiveFeedId);
         if (foundCollection) {
           collectionName = foundCollection.name;
         }
-      } else if (effectiveFeedId === "-1") { 
+      } else if (effectiveFeedId === "-1") {
           const staticAllFeed = this.FEEDS.find(f => f.id === "all");
           if (staticAllFeed) {
             collectionName = staticAllFeed.name;
           }
       }
-      
+
       let selfLink = `/opds/provider/raindrop/${feedIdFromPath}`;
       if (currentPage > 0) {
         selfLink += `?page=${currentPage}`;
       }
 
       const opdsFeed = new OPDSFeed({
-        id: `raindrop:${effectiveFeedId}`, // The ID of the feed itself doesn't change with page
+        id: `raindrop:${effectiveFeedId}`,
         title: `Raindrop.io - ${collectionName}${currentPage > 0 ? ` (Page ${currentPage + 1})` : ''}`,
         links: {
           self: selfLink,
@@ -153,14 +152,14 @@ export default class RaindropProvider {
         opdsFeed.addEntry({
           title: "Not Connected to Raindrop.io",
           id: `raindrop:${effectiveFeedId}:error:notconnected`,
-          link: selfLink, // Link to current page view
+          link: selfLink,
           content: "Please configure the Raindrop.io provider.",
         });
       } else {
         try {
           const { items, hasMoreUpstream } = await this.getItemsInCollection(effectiveFeedId, currentPage, itemsPerPage);
-          
-          if (items.length === 0 && currentPage === 0) { // Only show "no items" if it's the first page and truly empty
+
+          if (items.length === 0 && currentPage === 0) {
             opdsFeed.addEntry({
               title: "No items found",
               id: `raindrop:${effectiveFeedId}:empty`,
@@ -169,24 +168,22 @@ export default class RaindropProvider {
             });
           } else {
             items.forEach(item => {
-              // Assuming addArticleAcquisitionEntry exists on OPDSFeed
               opdsFeed.addArticleAcquisitionEntry(item.url, item.title || nameFromUrlPath(item.url), item.description);
             });
 
-            // Add pagination links
             if (hasMoreUpstream) {
-              opdsFeed.feed.ele('link', { 
-                rel: 'next', 
-                href: `/opds/provider/raindrop/${feedIdFromPath}?page=${currentPage + 1}`, 
-                type: OPDS_ACQUISITION_LINK_TYPE 
+              opdsFeed.feed.ele('link', {
+                rel: 'next',
+                href: `/opds/provider/raindrop/${feedIdFromPath}?page=${currentPage + 1}`,
+                type: OPDS_ACQUISITION_LINK_TYPE
               }).up();
             }
             if (currentPage > 0) {
               const prevPageQuery = currentPage - 1 === 0 ? '' : `?page=${currentPage - 1}`;
-              opdsFeed.feed.ele('link', { 
-                rel: 'previous', 
-                href: `/opds/provider/raindrop/${feedIdFromPath}${prevPageQuery}`, 
-                type: OPDS_ACQUISITION_LINK_TYPE 
+              opdsFeed.feed.ele('link', {
+                rel: 'previous',
+                href: `/opds/provider/raindrop/${feedIdFromPath}${prevPageQuery}`,
+                type: OPDS_ACQUISITION_LINK_TYPE
               }).up();
             }
           }
@@ -213,7 +210,7 @@ export default class RaindropProvider {
   public setAccessToken(token: string): void {
     this.accessToken = token;
     try {
-      fs.writeFileSync(this.authConfigPath, token, 'utf-8');
+      fs.writeFileSync(this.authConfigPath, token, { encoding: 'utf-8', mode: 0o600 });
       console.log("Raindrop.io access token saved.");
     } catch (error) {
       console.error("Error saving Raindrop.io access token:", error);
@@ -228,21 +225,22 @@ export default class RaindropProvider {
 
     try {
       console.log("Fetching collections from Raindrop.io API");
-      const response = await axios.get<{ items: RaindropCollection[] }>(
-        `${RAINDROP_API_BASE_URL}/collections`,
-        { headers: { Authorization: `Bearer ${this.accessToken}` } }
-      );
+      const data = await got
+        .get(`${RAINDROP_API_BASE_URL}/collections`, {
+          headers: { Authorization: `Bearer ${this.accessToken}` },
+        })
+        .json<{ items: RaindropCollection[] }>();
 
-      const collections: FeedDescription[] = response.data.items.map(collection => ({
+      const collections: FeedDescription[] = data.items.map(collection => ({
         id: collection._id.toString(),
         name: collection.title,
         description: `Collection: ${collection.title}${collection.count ? ` (${collection.count} items)` : ''}`,
       }));
-      
+
       const allItemsFeedInfo = this.FEEDS.find(f => f.id === "all");
       if (allItemsFeedInfo) {
         collections.unshift({
-            id: "-1", 
+            id: "-1",
             name: allItemsFeedInfo.name,
             description: allItemsFeedInfo.description,
         });
@@ -250,7 +248,8 @@ export default class RaindropProvider {
       return collections;
     } catch (error) {
       console.error("Error fetching Raindrop.io collections:", error);
-      if (axios.isAxiosError(error) && error.response?.status === 401) {
+      const httpError = error as { response?: { statusCode?: number } };
+      if (httpError.response?.statusCode === 401) {
         console.error("Raindrop.io: Unauthorized. Token might be invalid or expired.");
       }
       return [];
@@ -258,12 +257,12 @@ export default class RaindropProvider {
   }
 
   private async getItemsInCollection(
-    collectionId: string, 
-    page: number, // 0-indexed page for Raindrop API
-    perPage: number // items per page to request from Raindrop
-  ): Promise<{ 
-    items: Array<{id: string, title: string, url: string, description?: string}>, 
-    hasMoreUpstream: boolean 
+    collectionId: string,
+    page: number,
+    perPage: number
+  ): Promise<{
+    items: Array<{id: string, title: string, url: string, description?: string}>,
+    hasMoreUpstream: boolean
   }> {
     if (!this.isConnected() || !this.accessToken) {
       console.warn(`Raindrop.io: Not connected, cannot fetch items for collection ${collectionId}.`);
@@ -274,12 +273,14 @@ export default class RaindropProvider {
 
     try {
       console.log(`Fetching items for collection ${numericCollectionId} from Raindrop.io API (page ${page}, perPage ${perPage})`);
-      const response = await axios.get<{ items: RaindropItem[] }>(
-        `${RAINDROP_API_BASE_URL}/raindrops/${numericCollectionId}?page=${page}&perpage=${perPage}`,
-        { headers: { Authorization: `Bearer ${this.accessToken}` } }
-      );
+      const data = await got
+        .get(`${RAINDROP_API_BASE_URL}/raindrops/${numericCollectionId}`, {
+          searchParams: { page, perpage: perPage },
+          headers: { Authorization: `Bearer ${this.accessToken}` },
+        })
+        .json<{ items: RaindropItem[] }>();
 
-      const fetchedRaindropItems = response.data.items || [];
+      const fetchedRaindropItems = data.items || [];
       const mappedItems = fetchedRaindropItems.map(item => ({
         id: item._id.toString(),
         title: item.title || nameFromUrlPath(item.link),
@@ -293,10 +294,11 @@ export default class RaindropProvider {
       };
     } catch (error) {
       console.error(`Error fetching Raindrop.io items for collection ${numericCollectionId}, page ${page}:`, error);
-      if (axios.isAxiosError(error) && error.response?.status === 401) {
+      const httpError = error as { response?: { statusCode?: number } };
+      if (httpError.response?.statusCode === 401) {
         console.error("Raindrop.io: Unauthorized. Token might be invalid or expired.");
       }
-      return { items: [], hasMoreUpstream: false }; 
+      return { items: [], hasMoreUpstream: false };
     }
   }
 }
