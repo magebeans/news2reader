@@ -54,13 +54,6 @@ export class OPDSFeed {
         //.ele('updated').txt('2023-07-27T07:26:26.954Z').up()
         .ele('content', {type: 'text'}).txt(properties.content).up();
     }
-    addGenericLinkEntry(properties: { id: string, title: string, linkHref: string, linkRel: string, linkType: string, content: string }) {
-        this.feed.ele('entry')
-        .ele('id').txt(properties.id).up()
-        .ele('title').txt(properties.title).up()
-        .ele('link', { rel: properties.linkRel, href: properties.linkHref, type: properties.linkType }).up()
-        .ele('content', {type: 'text'}).txt(properties.content).up();
-    }
     addEntries(entries: SubsectionEntryProperties[]) {
         for (const entry of entries) {
             this.addEntry(entry);
@@ -71,38 +64,19 @@ export class OPDSFeed {
       // to avoid misleading clients trying to detect type based on suffixes in that specific case.
       const queryString = querystring.stringify({ url: Buffer.from(url).toString('base64') });
 
-      let href = url; // Default to original URL
-      let type: string;
-
       // Default to EPUB conversion path and type
       let finalHref = `/content.epub?${queryString}`;
       let finalType = "application/epub+zip";
 
-      try {
-        const parsedUrl = new URL(url);
-        const pathnameLower = parsedUrl.pathname.toLowerCase();
+      const parsedUrl = new URL(url);
+      const pathnameLower = parsedUrl.pathname.toLowerCase();
 
-        if (pathnameLower.endsWith(".pdf")) {
-          finalHref = url; // Use original URL for PDF
-          finalType = "application/pdf";
-        } else if (pathnameLower.endsWith(".epub")) {
-          finalHref = url; // Use original URL for EPUB
-          finalType = "application/epub+zip";
-        }
-        // If neither, it remains set for EPUB conversion (default above)
-      } catch (e) {
-        // Fallback for unparsable URLs or if robust check is not desired for some edge cases
-        // This fallback maintains a simple, case-insensitive suffix check.
-        console.warn(`URL parsing failed for type detection: ${url}. Falling back to simple suffix check.`, e);
-        const lowerUrl = url.toLowerCase();
-        if (lowerUrl.endsWith(".pdf")) {
-          finalHref = url;
-          finalType = "application/pdf";
-        } else if (lowerUrl.endsWith(".epub")) {
-          finalHref = url;
-          finalType = "application/epub+zip";
-        }
-        // If neither, it remains set for EPUB conversion (default above)
+      if (pathnameLower.endsWith(".pdf")) {
+        finalHref = url;
+        finalType = "application/pdf";
+      } else if (pathnameLower.endsWith(".epub")) {
+        finalHref = url;
+        finalType = "application/epub+zip";
       }
 
       // Title cleanup
@@ -111,8 +85,10 @@ export class OPDSFeed {
         finalTitle = nameFromUrlPath(url);
       }
 
-      this.feed.ele("entry")
-        .ele("id").txt("foo").up() // Consider generating a more unique ID, e.g., based on URL
+      const entryId = Buffer.from(url).toString('base64url');
+
+      const entry = this.feed.ele("entry")
+        .ele("id").txt(entryId).up()
         .ele("title").txt(finalTitle).up()
         //.ele('updated').txt('2023-07-27T07:26:26.954Z').up()
         .ele("link", {
@@ -122,7 +98,7 @@ export class OPDSFeed {
         }).up();
 
       if (summary && summary.trim() !== "") {
-        this.feed.ele('summary', {type: 'text'}).txt(summary.trim()).up();
+        entry.ele('summary', {type: 'text'}).txt(summary.trim()).up();
       }
     }
     toXmlString() {
