@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/manas/Web/news2reader/**)",
+      "Bash(docker compose:*)",
+      "Bash(docker image:*)",
+      "Bash(git rebase:*)",
+      "Bash(yarn build:*)",
+      "Bash(yarn add:*)",
+      "Bash(docker build:*)",
+      "Bash(python3 -m json.tool)",
+      "Bash(git reset:*)",
+      "Bash(git checkout:*)",
+      "Bash(git add:*)",
+      "Bash(git rm:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git fetch:*)",
+      "Bash(docker ps:*)"
+    ]
+  }
+}

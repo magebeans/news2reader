@@ -4,12 +4,12 @@ import Epub from "epub-gen";
 import jsdom from "jsdom";
 import { Readability } from "@mozilla/readability";
 import got from "got";
-import { mathjax } from 'mathjax-full/js/mathjax';
-import { TeX } from 'mathjax-full/js/input/tex';
-import { SVG } from 'mathjax-full/js/output/svg';
-import { jsdomAdaptor } from 'mathjax-full/js/adaptors/jsdomAdaptor';
-import { RegisterHTMLHandler } from 'mathjax-full/js/handlers/html';
-import { AllPackages } from 'mathjax-full/js/input/tex/AllPackages';
+import { mathjax } from 'mathjax-full/js/mathjax.js';
+import { TeX } from 'mathjax-full/js/input/tex.js';
+import { SVG } from 'mathjax-full/js/output/svg.js';
+import { jsdomAdaptor } from 'mathjax-full/js/adaptors/jsdomAdaptor.js';
+import { RegisterHTMLHandler } from 'mathjax-full/js/handlers/html.js';
+import { AllPackages } from 'mathjax-full/js/input/tex/AllPackages.js';
 
 const HEADERS = {
   'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -29,11 +29,8 @@ export async function articleToEpub(
   // TODO: Read/write EPUB into a cache dir by URL hash
   const outputPath = "/tmp/news2opds-out.epub";
   const virtualConsole = new jsdom.VirtualConsole();
-  virtualConsole.on("jsdomError", (err) => console.error("JSDOM error:", err));
-  virtualConsole.on("error", (err) => console.error("JSDOM console.error:", err));
-  virtualConsole.on("warn", (msg) => console.warn("JSDOM console.warn:", msg));
-  virtualConsole.on("info", (msg) => console.info("JSDOM console.info:", msg));
-  virtualConsole.on("log", (msg) => console.log("JSDOM console.log:", msg));
+  virtualConsole.on("jsdomError", (err) => console.error("JSDOM error:", String(err).slice(0, 300)));
+  virtualConsole.on("error", (err) => console.error("JSDOM console.error:", String(err).slice(0, 300)));
 
   console.log(`Processing article at URL ${url} to path ${outputPath}`);
 
