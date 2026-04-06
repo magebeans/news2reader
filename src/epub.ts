@@ -4,12 +4,9 @@ import Epub from "epub-gen";
 import jsdom from "jsdom";
 import { Readability } from "@mozilla/readability";
 import got from "got";
-import { mathjax } from 'mathjax-full/js/mathjax.js';
-import { TeX } from 'mathjax-full/js/input/tex.js';
-import { SVG } from 'mathjax-full/js/output/svg.js';
-import { jsdomAdaptor } from 'mathjax-full/js/adaptors/jsdomAdaptor.js';
-import { RegisterHTMLHandler } from 'mathjax-full/js/handlers/html.js';
-import { AllPackages } from 'mathjax-full/js/input/tex/AllPackages.js';
+import katex from 'katex';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 
 const HEADERS = {
   'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -18,6 +15,35 @@ const HEADERS = {
 };
 
 const READABILITY_DEBUG = process.env.READABILITY_DEBUG === "1" || process.env.READABILITY_DEBUG === "true";
+
+// Load KaTeX CSS once at module scope
+const require_ = createRequire(import.meta.url);
+const katexCss = readFileSync(require_.resolve('katex/dist/katex.min.css'), 'utf-8');
+
+/**
+ * Find TeX delimiters in HTML and replace them with KaTeX-rendered HTML.
+ * Returns the processed HTML and whether any math was found.
+ */
+function renderMathInHtml(html: string): { html: string; hasMath: boolean } {
+  let hasMath = false;
+
+  // Order matters: match $$ before $, and \[...\] before \(...\)
+  const patterns: Array<{ regex: RegExp; displayMode: boolean }> = [
+    { regex: /\$\$([\s\S]+?)\$\$/g, displayMode: true },
+    { regex: /\\\[([\s\S]+?)\\\]/g, displayMode: true },
+    { regex: /(?<!\$)\$(?!\$)(.+?)\$(?!\$)/g, displayMode: false },
+    { regex: /\\\(([\s\S]+?)\\\)/g, displayMode: false },
+  ];
+
+  for (const { regex, displayMode } of patterns) {
+    html = html.replace(regex, (_match, tex: string) => {
+      hasMath = true;
+      return katex.renderToString(tex, { displayMode, throwOnError: false });
+    });
+  }
+
+  return { html, hasMath };
+}
 
 export async function articleToEpub(
   url: string,
@@ -90,26 +116,8 @@ export async function articleToEpub(
     excerpt: article.excerpt?.slice(0, 120),
   });
 
-  // --- Add MathJax support to EPUB
-  // We need a DOM for MathJax to process. We'll create one from the article content.
-  const articleDom = new jsdom.JSDOM(article.content);
-  const articleDocument = articleDom.window.document;
-
-  // Pre-render MathJax equations to SVG and embed them in the EPUB content.
-  const adaptor = jsdomAdaptor(articleDom.window);
-  RegisterHTMLHandler(adaptor);
-
-  const tex = new TeX({ packages: AllPackages });
-  const svg = new SVG({ fontCache: 'none' });
-  const mjDocument = mathjax.document(articleDocument, {
-    InputJax: tex,
-    OutputJax: svg,
-  });
-
-  mjDocument.render();
-
-  const mathjaxCss = adaptor.textContent(svg.styleSheet(mjDocument) as HTMLElement);
-  const processedContent = articleDocument.body.innerHTML;
+  // --- Render TeX math expressions with KaTeX (only if present)
+  const { html: processedContent, hasMath } = renderMathInHtml(article.content);
   // ---
 
   const title = preferredTitle ?? article?.title ?? "Title Missing";
@@ -128,7 +136,7 @@ export async function articleToEpub(
         beforeToc: true,
       },
     ],
-    css: mathjaxCss,
+    css: hasMath ? katexCss : '',
     tempDir: tmpdir(),
   }).promise;
 
