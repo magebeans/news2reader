@@ -76,8 +76,8 @@ export async function articleToEpub(
       h1Tags: doc.getElementsByTagName("h1").length,
     });
     if (process.env.VERBOSE) {
-      console.error("Document head HTML (first 5000 chars):", doc.head?.innerHTML?.slice(0, 5000));
-      console.error("Document body HTML (first 5000 chars):", doc.body?.innerHTML?.slice(0, 5000));
+      console.error("Document head HTML length:", doc.head?.innerHTML?.length ?? 0);
+      console.error("Document body HTML length:", doc.body?.innerHTML?.length ?? 0);
     } else {
       console.error("Set VERBOSE=1 to include HTML snippets in logs.");
     }

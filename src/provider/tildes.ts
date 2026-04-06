@@ -147,7 +147,7 @@ export default class TildesProvider {
         const topics = Array.from(nodeList) as HTMLElement[];
         
         if (process.env.VERBOSE) {
-          console.log(topics);
+          console.log("Found", topics.length, "topics");
         }
 
         let results = topics

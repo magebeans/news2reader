@@ -294,7 +294,7 @@ export default class PocketProvider {
     
     if (process.env.VERBOSE) {
       console.log("Using search params:", searchParams);
-      console.log("Got Pocket data:", data);
+      console.log("Got Pocket data: item count:", Object.keys(data.list).length);
     }
     return Object.entries(data.list).sort((a , b) => {
       const [, itemA] = a;

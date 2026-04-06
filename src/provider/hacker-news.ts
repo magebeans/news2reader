@@ -199,7 +199,7 @@ export default class HackerNewsProvider {
         const response = await got(searchUrl).json() as HNSearchResults;
         
         if (process.env.VERBOSE) {
-          console.log(response);
+          console.log("HN search returned", response.hits.length, "hits");
         }
         
         let results = response.hits
@@ -218,7 +218,7 @@ export default class HackerNewsProvider {
         });
 
         if (process.env.VERBOSE) {
-          console.log(results);
+          console.log("HN filtered results:", results.length, "items");
         }
         
         return results;
