@@ -1,5 +1,7 @@
 import { tmpdir } from "node:os";
 import { URL } from "node:url";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import Epub from "epub-gen";
 import jsdom from "jsdom";
 import { Readability } from "@mozilla/readability";
@@ -117,21 +119,31 @@ export async function articleToEpub(
 
   let processedContent = mathjaxAdaptor.innerHTML(mathjaxAdaptor.body(mjDocument.document));
 
-  // Convert MathJax <mjx-container> wrappers to bare inline SVGs.
-  // E-readers strip unknown custom elements like <mjx-container>, but inline <svg>
-  // is valid XHTML and widely supported. We also replace currentColor with #000 since
-  // some renderers don't inherit text color into inline SVGs reliably.
+  // Write each MathJax SVG to a temp file and reference via file:// URL.
+  // - E-readers strip custom elements like <mjx-container>
+  // - Inline <svg> isn't valid in XHTML 1.1 (epub-gen's default doctype)
+  // - epub-gen copies file:// images into the EPUB package
+  const mathDir = join(tmpdir(), 'news2reader-math');
+  mkdirSync(mathDir, { recursive: true });
+  let mathIndex = 0;
   processedContent = processedContent.replace(
     /<mjx-container([^>]*)>([\s\S]*?)<\/mjx-container>/g,
     (_match, attrs: string, inner: string) => {
       const svgMatch = inner.match(/<svg[\s\S]*<\/svg>/);
       if (!svgMatch) return inner;
       const svgFixed = svgMatch[0].replace(/currentColor/g, '#000');
+      const filename = `math-${mathIndex++}.svg`;
+      writeFileSync(join(mathDir, filename), svgFixed);
+      const fileUrl = `file://${join(mathDir, filename)}`;
+      // Preserve vertical-align from the SVG's style for inline math baseline alignment
+      const alignMatch = svgFixed.match(/vertical-align:\s*([^;"]+)/);
+      const align = alignMatch ? alignMatch[1].trim() : '0';
+      const img = `<img src="${fileUrl}" style="vertical-align: ${align};" alt="math"/>`;
       // Display math ($$...$$) should be block-level and centered
       if (attrs.includes('display="true"')) {
-        return `<div style="text-align: center; margin: 1em 0;">${svgFixed}</div>`;
+        return `<div style="text-align: center; margin: 1em 0;">${img}</div>`;
       }
-      return svgFixed;
+      return img;
     }
   );
   // ---
