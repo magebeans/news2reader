@@ -8,7 +8,7 @@ import { mathjax } from 'mathjax-full/js/mathjax.js';
 import { TeX } from 'mathjax-full/js/input/tex.js';
 import { SVG } from 'mathjax-full/js/output/svg.js';
 import { jsdomAdaptor } from 'mathjax-full/js/adaptors/jsdomAdaptor.js';
-import { RegisterHTMLHandler } from 'mathjax-full/js/handlers/html.js';
+import { HTMLHandler } from 'mathjax-full/js/handlers/html/HTMLHandler.js';
 import { AllPackages } from 'mathjax-full/js/input/tex/AllPackages.js';
 
 const HEADERS = {
@@ -19,9 +19,12 @@ const HEADERS = {
 
 const READABILITY_DEBUG = process.env.READABILITY_DEBUG === "1" || process.env.READABILITY_DEBUG === "true";
 
-// Initialize MathJax adaptor and handler once at module level
+// Initialize MathJax adaptor and handler once at module level.
+// Register directly on the imported mathjax object rather than using
+// RegisterHTMLHandler, which does its own CJS require("../mathjax.js")
+// that may resolve to a different module instance under ESM/CJS interop.
 const mathjaxAdaptor = jsdomAdaptor(jsdom.JSDOM);
-RegisterHTMLHandler(mathjaxAdaptor);
+mathjax.handlers.register(new HTMLHandler(mathjaxAdaptor));
 
 export async function articleToEpub(
   url: string,
