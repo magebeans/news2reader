@@ -2,7 +2,7 @@ import { tmpdir } from "node:os";
 import { URL } from "node:url";
 import { writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { EPub } from "@lesjoursfr/html-to-epub";
+import Epub from "epub-gen";
 import jsdom from "jsdom";
 import { Readability } from "@mozilla/readability";
 import got from "got";
@@ -120,9 +120,9 @@ export async function articleToEpub(
   let processedContent = mathjaxAdaptor.innerHTML(mathjaxAdaptor.body(mjDocument.document));
 
   // Write each MathJax SVG to a temp file and reference via file:// URL.
-  // Both epub-gen and @lesjoursfr/html-to-epub strip SVG attributes (viewBox, d, fill, etc.)
-  // from inline content via hardcoded allowlists. Using file:// image references bypasses
-  // the HTML sanitizer entirely — the library copies them into the EPUB as-is.
+  // - E-readers strip custom elements like <mjx-container>
+  // - Inline <svg> isn't valid in XHTML 1.1 (epub-gen's default doctype)
+  // - epub-gen copies file:// images into the EPUB package
   const mathDir = join(tmpdir(), 'news2reader-math');
   mkdirSync(mathDir, { recursive: true });
   let mathIndex = 0;
@@ -151,22 +151,22 @@ export async function articleToEpub(
   const title = preferredTitle ?? article?.title ?? "Title Missing";
 
   // Build the EPUB at output_path
-  const epub = new EPub({
+  await new Epub({
+    output: outputPath,
     title: title,
-    description: article?.excerpt ?? title,
-    author: article?.byline ? [article.byline] : undefined,
+    author: article?.byline,
     publisher: urlHost,
     content: [
       {
         title: title,
+        author: article?.byline,
         data: processedContent,
         beforeToc: true,
       },
     ],
     css: '',
     tempDir: tmpdir(),
-  }, outputPath);
-  await epub.render();
+  }).promise;
 
   console.log(`EPUB saved to ${outputPath}`);
   return outputPath;
