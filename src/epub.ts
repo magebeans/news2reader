@@ -116,7 +116,22 @@ export async function articleToEpub(
   mjDocument.render();
 
   const mathjaxCss = mathjaxAdaptor.textContent(svg.styleSheet(mjDocument) as HTMLElement);
-  const processedContent = mathjaxAdaptor.innerHTML(mathjaxAdaptor.body(mjDocument.document));
+  let processedContent = mathjaxAdaptor.innerHTML(mathjaxAdaptor.body(mjDocument.document));
+
+  // Convert MathJax <mjx-container> elements to <img> tags with SVG data URIs.
+  // E-readers strip unknown custom elements like <mjx-container>, losing all math.
+  processedContent = processedContent.replace(
+    /<mjx-container[^>]*>([\s\S]*?)<\/mjx-container>/g,
+    (_match, inner: string) => {
+      const svgMatch = inner.match(/<svg[\s\S]*<\/svg>/);
+      if (!svgMatch) return inner;
+      const svgData = Buffer.from(svgMatch[0]).toString('base64');
+      // Preserve vertical-align from the SVG's style for inline math baseline alignment
+      const alignMatch = svgMatch[0].match(/vertical-align:\s*([^;"]+)/);
+      const align = alignMatch ? alignMatch[1].trim() : '0';
+      return `<img src="data:image/svg+xml;base64,${svgData}" style="vertical-align: ${align};" alt="math"/>`;
+    }
+  );
   // ---
 
   const title = preferredTitle ?? article?.title ?? "Title Missing";
