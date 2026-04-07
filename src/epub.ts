@@ -19,6 +19,10 @@ const HEADERS = {
 
 const READABILITY_DEBUG = process.env.READABILITY_DEBUG === "1" || process.env.READABILITY_DEBUG === "true";
 
+// Initialize MathJax adaptor and handler once at module level
+const mathjaxAdaptor = jsdomAdaptor(jsdom.JSDOM);
+RegisterHTMLHandler(mathjaxAdaptor);
+
 export async function articleToEpub(
   url: string,
   preferredTitle: string | null
@@ -95,23 +99,17 @@ export async function articleToEpub(
   });
 
   // --- Pre-render MathJax equations to SVG
-  const articleDom = new jsdom.JSDOM(article.content);
-  const articleDocument = articleDom.window.document;
-
-  const adaptor = jsdomAdaptor(jsdom.JSDOM);
-  RegisterHTMLHandler(adaptor);
-
   const tex = new TeX({ packages: AllPackages });
   const svg = new SVG({ fontCache: 'none' });
-  const mjDocument = mathjax.document(articleDocument, {
+  const mjDocument = mathjax.document(article.content, {
     InputJax: tex,
     OutputJax: svg,
   });
 
   mjDocument.render();
 
-  const mathjaxCss = adaptor.textContent(svg.styleSheet(mjDocument) as HTMLElement);
-  const processedContent = articleDocument.body.innerHTML;
+  const mathjaxCss = mathjaxAdaptor.textContent(svg.styleSheet(mjDocument) as HTMLElement);
+  const processedContent = mathjaxAdaptor.innerHTML(mathjaxAdaptor.body(mjDocument.document));
   // ---
 
   const title = preferredTitle ?? article?.title ?? "Title Missing";
