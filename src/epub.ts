@@ -1,7 +1,7 @@
 import { tmpdir } from "node:os";
-import { URL } from "node:url";
+import { URL, fileURLToPath } from "node:url";
 import { writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import Epub from "epub-gen";
 import jsdom from "jsdom";
 import { Readability } from "@mozilla/readability";
@@ -20,6 +20,9 @@ const HEADERS = {
 };
 
 const READABILITY_DEBUG = process.env.READABILITY_DEBUG === "1" || process.env.READABILITY_DEBUG === "true";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const CUSTOM_OPF_TEMPLATE = join(__dirname, "../src/templates/content.opf.ejs");
 
 // Initialize MathJax adaptor and handler once at module level.
 // Register directly on the imported mathjax object rather than using
@@ -168,6 +171,8 @@ export async function articleToEpub(
     title: title,
     author: article?.byline,
     publisher: urlHost,
+    identifier: url,
+    customOpfTemplatePath: CUSTOM_OPF_TEMPLATE,
     content: [
       {
         title: title,
