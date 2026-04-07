@@ -102,7 +102,11 @@ export async function articleToEpub(
   });
 
   // --- Pre-render MathJax equations to SVG
-  const tex = new TeX({ packages: AllPackages });
+  const tex = new TeX({
+    packages: AllPackages,
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']],
+  });
   const svg = new SVG({ fontCache: 'none' });
   const mjDocument = mathjax.document(article.content, {
     InputJax: tex,
