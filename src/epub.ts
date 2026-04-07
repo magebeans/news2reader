@@ -22,7 +22,7 @@ const HEADERS = {
 const READABILITY_DEBUG = process.env.READABILITY_DEBUG === "1" || process.env.READABILITY_DEBUG === "true";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const CUSTOM_OPF_TEMPLATE = join(__dirname, "../src/templates/content.opf.ejs");
+const CUSTOM_OPF_TEMPLATE = join(__dirname, "templates/content.opf.ejs");
 
 // Initialize MathJax adaptor and handler once at module level.
 // Register directly on the imported mathjax object rather than using

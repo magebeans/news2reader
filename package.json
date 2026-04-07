@@ -4,7 +4,7 @@
   "packageManager": "yarn@3.6.1",
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -r src/templates dist/",
     "start": "node dist/server.js",
     "dev": "VERBOSE=1 concurrently \"tsc --watch\" \"nodemon -q dist/server.js\"",
     "repl": "node"
