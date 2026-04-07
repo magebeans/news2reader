@@ -115,21 +115,23 @@ export async function articleToEpub(
 
   mjDocument.render();
 
-  const mathjaxCss = mathjaxAdaptor.textContent(svg.styleSheet(mjDocument) as HTMLElement);
   let processedContent = mathjaxAdaptor.innerHTML(mathjaxAdaptor.body(mjDocument.document));
 
-  // Convert MathJax <mjx-container> elements to <img> tags with SVG data URIs.
-  // E-readers strip unknown custom elements like <mjx-container>, losing all math.
+  // Convert MathJax <mjx-container> wrappers to bare inline SVGs.
+  // E-readers strip unknown custom elements like <mjx-container>, but inline <svg>
+  // is valid XHTML and widely supported. We also replace currentColor with #000 since
+  // some renderers don't inherit text color into inline SVGs reliably.
   processedContent = processedContent.replace(
-    /<mjx-container[^>]*>([\s\S]*?)<\/mjx-container>/g,
-    (_match, inner: string) => {
+    /<mjx-container([^>]*)>([\s\S]*?)<\/mjx-container>/g,
+    (_match, attrs: string, inner: string) => {
       const svgMatch = inner.match(/<svg[\s\S]*<\/svg>/);
       if (!svgMatch) return inner;
-      const svgData = Buffer.from(svgMatch[0]).toString('base64');
-      // Preserve vertical-align from the SVG's style for inline math baseline alignment
-      const alignMatch = svgMatch[0].match(/vertical-align:\s*([^;"]+)/);
-      const align = alignMatch ? alignMatch[1].trim() : '0';
-      return `<img src="data:image/svg+xml;base64,${svgData}" style="vertical-align: ${align};" alt="math"/>`;
+      const svgFixed = svgMatch[0].replace(/currentColor/g, '#000');
+      // Display math ($$...$$) should be block-level and centered
+      if (attrs.includes('display="true"')) {
+        return `<div style="text-align: center; margin: 1em 0;">${svgFixed}</div>`;
+      }
+      return svgFixed;
     }
   );
   // ---
@@ -150,7 +152,7 @@ export async function articleToEpub(
         beforeToc: true,
       },
     ],
-    css: mathjaxCss,
+    css: '',
     tempDir: tmpdir(),
   }).promise;
 
