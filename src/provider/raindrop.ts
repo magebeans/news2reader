@@ -168,7 +168,7 @@ export default class RaindropProvider {
             });
           } else {
             items.forEach(item => {
-              opdsFeed.addArticleAcquisitionEntry(item.url, item.title || nameFromUrlPath(item.url), item.description);
+              opdsFeed.addArticleAcquisitionEntry(item.url, item.title || nameFromUrlPath(item.url), item.description, item.created);
             });
 
             if (hasMoreUpstream) {
@@ -261,7 +261,7 @@ export default class RaindropProvider {
     page: number,
     perPage: number
   ): Promise<{
-    items: Array<{id: string, title: string, url: string, description?: string}>,
+    items: Array<{id: string, title: string, url: string, description?: string, created?: string}>,
     hasMoreUpstream: boolean
   }> {
     if (!this.isConnected() || !this.accessToken) {
@@ -286,6 +286,7 @@ export default class RaindropProvider {
         title: item.title || nameFromUrlPath(item.link),
         url: item.link,
         description: item.excerpt || "",
+        created: item.created,
       }));
 
       return {

@@ -59,7 +59,7 @@ export class OPDSFeed {
             this.addEntry(entry);
         }
     }
-    addArticleAcquisitionEntry(url: string, title: string, summary?: string) {
+    addArticleAcquisitionEntry(url: string, title: string, summary?: string, updated?: string) {
       // URL param is base64-encoded for the EPUB conversion link,
       // to avoid misleading clients trying to detect type based on suffixes in that specific case.
       const queryString = querystring.stringify({ url: Buffer.from(url).toString('base64') });
@@ -89,9 +89,13 @@ export class OPDSFeed {
 
       const entry = this.feed.ele("entry")
         .ele("id").txt(entryId).up()
-        .ele("title").txt(finalTitle).up()
-        //.ele('updated').txt('2023-07-27T07:26:26.954Z').up()
-        .ele("link", {
+        .ele("title").txt(finalTitle).up();
+
+      if (updated) {
+        entry.ele('updated').txt(updated).up();
+      }
+
+      entry.ele("link", {
           rel: "http://opds-spec.org/acquisition",
           href: finalHref,
           type: finalType,
