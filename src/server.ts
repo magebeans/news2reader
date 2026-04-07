@@ -8,6 +8,7 @@ import express, { Express, Request, Response, urlencoded } from "express"; // Ad
 import xdg from "@folder/xdg";
 import { OPDSFeed } from "./opds.js";
 import { articleToEpub } from "./epub.js";
+import { UpstreamError } from "./errors.js";
 import PocketProvider from "./provider/pocket.js";
 import HackerNewsProvider from "./provider/hacker-news.js";
 import TildesProvider from "./provider/tildes.js";
@@ -107,7 +108,14 @@ app.get("/content.epub", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Failed to create EPUB from article URL");
     console.error(error);
-    res.status(404).send("Could not retrieve this article");
+    if (error instanceof UpstreamError) {
+      if (error.retryAfter) {
+        res.set("Retry-After", error.retryAfter);
+      }
+      res.status(error.statusCode).send(error.message);
+    } else {
+      res.status(500).send("Internal error while creating EPUB");
+    }
     return;
   }
 });

@@ -5,7 +5,8 @@ import { join, dirname } from "node:path";
 import Epub from "epub-gen";
 import jsdom from "jsdom";
 import { Readability } from "@mozilla/readability";
-import got from "got";
+import got, { HTTPError, TimeoutError, RequestError } from "got";
+import { UpstreamError } from "./errors.js";
 import { mathjax } from 'mathjax-full/js/mathjax.js';
 import { TeX } from 'mathjax-full/js/input/tex.js';
 import { SVG } from 'mathjax-full/js/output/svg.js';
@@ -47,9 +48,37 @@ export async function articleToEpub(
   console.log(`Processing article at URL ${url} to path ${outputPath}`);
 
   const fetchStart = Date.now();
-  const response = await got(url, {
-    headers: HEADERS
-  });
+  let response;
+  try {
+    response = await got(url, {
+      headers: HEADERS
+    });
+  } catch (error) {
+    const elapsed = Date.now() - fetchStart;
+    if (error instanceof HTTPError) {
+      const status = error.response.statusCode;
+      const retryAfter = error.response.headers["retry-after"] as string | undefined;
+      console.error(`Upstream returned HTTP ${status} for ${url} in ${elapsed}ms`);
+      if (status === 429) {
+        throw new UpstreamError(`Rate limited by upstream (${url})`, 429, retryAfter);
+      } else if (status === 403) {
+        throw new UpstreamError(`Forbidden by upstream (${url})`, 403);
+      } else if (status === 404) {
+        throw new UpstreamError(`Not found at upstream (${url})`, 404);
+      } else if (status >= 500) {
+        throw new UpstreamError(`Upstream server error (HTTP ${status}) for ${url}`, 502);
+      } else {
+        throw new UpstreamError(`Upstream error (HTTP ${status}) for ${url}`, 502);
+      }
+    } else if (error instanceof TimeoutError) {
+      console.error(`Upstream request timed out for ${url} after ${elapsed}ms`);
+      throw new UpstreamError(`Upstream request timed out (${url})`, 504);
+    } else if (error instanceof RequestError) {
+      console.error(`Network error fetching ${url} after ${elapsed}ms:`, error.message);
+      throw new UpstreamError(`Network error fetching upstream (${url}): ${error.message}`, 504);
+    }
+    throw error;
+  }
   const body = response.body;
   const rawContentType = response.headers["content-type"];
   const contentType = Array.isArray(rawContentType) ? rawContentType.join(", ") : rawContentType;
@@ -57,7 +86,7 @@ export async function articleToEpub(
 
   // Bail out if the response is not HTML — e.g. PDF URLs without a .pdf extension
   if (contentType && !contentType.startsWith("text/html") && !contentType.startsWith("application/xhtml")) {
-    throw new Error(`Cannot convert non-HTML content to EPUB (content-type: ${contentType})`);
+    throw new UpstreamError(`Cannot convert non-HTML content to EPUB (content-type: ${contentType})`, 422);
   }
   // Create a JSDOM
   const domStart = Date.now();
@@ -97,7 +126,7 @@ export async function articleToEpub(
     } else {
       console.error("Set VERBOSE=1 to include HTML snippets in logs.");
     }
-    throw new Error('Failed to parse article using Readability');
+    throw new UpstreamError('Failed to parse article using Readability', 422);
   }
   console.log(`Parsed article:`, {
     title: article.title,
