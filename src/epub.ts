@@ -43,6 +43,10 @@ export async function articleToEpub(
   const contentType = Array.isArray(rawContentType) ? rawContentType.join(", ") : rawContentType;
   console.log(`Fetched ${body.length} chars from ${url} in ${Date.now() - fetchStart}ms (status ${response.statusCode}, content-type: ${contentType ?? "unknown"})`);
 
+  // Bail out if the response is not HTML — e.g. PDF URLs without a .pdf extension
+  if (contentType && !contentType.startsWith("text/html") && !contentType.startsWith("application/xhtml")) {
+    throw new Error(`Cannot convert non-HTML content to EPUB (content-type: ${contentType})`);
+  }
   // Create a JSDOM
   const domStart = Date.now();
   const dom = new jsdom.JSDOM(body, { url, virtualConsole });
@@ -94,7 +98,7 @@ export async function articleToEpub(
   const articleDom = new jsdom.JSDOM(article.content);
   const articleDocument = articleDom.window.document;
 
-  const adaptor = jsdomAdaptor(articleDom.window);
+  const adaptor = jsdomAdaptor(jsdom.JSDOM);
   RegisterHTMLHandler(adaptor);
 
   const tex = new TeX({ packages: AllPackages });
