@@ -146,6 +146,18 @@ export async function articleToEpub(
       return img;
     }
   );
+
+  // Convert data: URI images to temp files. epub-gen doesn't handle data URIs —
+  // it tries to use them as file paths, causing ENAMETOOLONG / ENOENT errors.
+  processedContent = processedContent.replace(
+    /(<img\b[^>]*\bsrc=")data:image\/([^;]+);base64,([^"]+)("[^>]*>)/gi,
+    (_match, before: string, ext: string, b64: string, after: string) => {
+      const filename = `img-${mathIndex++}.${ext.toLowerCase().replace('+xml', '')}`;
+      writeFileSync(join(mathDir, filename), Buffer.from(b64, 'base64'));
+      return `${before}file://${join(mathDir, filename)}${after}`;
+    }
+  );
+
   // ---
 
   const title = preferredTitle ?? article?.title ?? "Title Missing";
