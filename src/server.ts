@@ -103,8 +103,12 @@ app.get("/content.epub", async (req: Request, res: Response) => {
   const title = typeof req.query.title === "string" ? req.query.title : null;
 
   try {
-    const epubFilePath = await articleToEpub(url, title);
-    res.sendFile(epubFilePath);
+    const filePath = await articleToEpub(url, title);
+    if (filePath.endsWith(".pdf")) {
+      res.type("application/pdf").sendFile(filePath);
+    } else {
+      res.sendFile(filePath);
+    }
   } catch (error) {
     console.error("Failed to create EPUB from article URL");
     console.error(error);

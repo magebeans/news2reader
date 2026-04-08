@@ -51,7 +51,8 @@ export async function articleToEpub(
   let response;
   try {
     response = await got(url, {
-      headers: HEADERS
+      headers: HEADERS,
+      responseType: "buffer",
     });
   } catch (error) {
     const elapsed = Date.now() - fetchStart;
@@ -79,15 +80,24 @@ export async function articleToEpub(
     }
     throw error;
   }
-  const body = response.body;
   const rawContentType = response.headers["content-type"];
   const contentType = Array.isArray(rawContentType) ? rawContentType.join(", ") : rawContentType;
-  console.log(`Fetched ${body.length} chars from ${url} in ${Date.now() - fetchStart}ms (status ${response.statusCode}, content-type: ${contentType ?? "unknown"})`);
+  console.log(`Fetched ${response.body.length} bytes from ${url} in ${Date.now() - fetchStart}ms (status ${response.statusCode}, content-type: ${contentType ?? "unknown"})`);
 
-  // Bail out if the response is not HTML — e.g. PDF URLs without a .pdf extension
+  // PDF: write directly to a temp file and return it as-is
+  if (contentType && contentType.startsWith("application/pdf")) {
+    const pdfPath = "/tmp/news2opds-out.pdf";
+    writeFileSync(pdfPath, response.body);
+    console.log(`PDF saved to ${pdfPath}`);
+    return pdfPath;
+  }
+
+  // Bail out for other non-HTML content types
   if (contentType && !contentType.startsWith("text/html") && !contentType.startsWith("application/xhtml")) {
     throw new UpstreamError(`Cannot convert non-HTML content to EPUB (content-type: ${contentType})`, 422);
   }
+
+  const body = response.body.toString("utf-8");
   // Create a JSDOM
   const domStart = Date.now();
   const dom = new jsdom.JSDOM(body, { url, virtualConsole });
