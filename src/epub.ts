@@ -32,6 +32,122 @@ const CUSTOM_OPF_TEMPLATE = join(__dirname, "templates/content.opf.ejs");
 const mathjaxAdaptor = jsdomAdaptor(jsdom.JSDOM);
 mathjax.handlers.register(new HTMLHandler(mathjaxAdaptor));
 
+interface MathDelimiters {
+  inlineMath: string[][];
+  displayMath: string[][];
+}
+
+const SAFE_MATH_DELIMITERS: MathDelimiters = {
+  inlineMath: [['\\(', '\\)']],
+  displayMath: [['\\[', '\\]']],
+};
+
+function unescapeJSString(s: string): string {
+  try {
+    return JSON.parse('"' + s + '"');
+  } catch {
+    return s;
+  }
+}
+
+function extractDelimiterPairs(scriptText: string, key: string): string[][] | null {
+  const keyRe = new RegExp(key + '\\s*:\\s*\\[');
+  const keyMatch = keyRe.exec(scriptText);
+  if (!keyMatch) return null;
+
+  let depth = 0;
+  const start = keyMatch.index + keyMatch[0].length - 1;
+  let end = start;
+  for (let i = start; i < scriptText.length; i++) {
+    if (scriptText[i] === '[') depth++;
+    else if (scriptText[i] === ']') depth--;
+    if (depth === 0) { end = i; break; }
+  }
+
+  const arrayText = scriptText.slice(start, end + 1);
+  const pairRe = /\[\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')\s*,\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')\s*\]/g;
+  const pairs: string[][] = [];
+  let m;
+  while ((m = pairRe.exec(arrayText)) !== null) {
+    const left = unescapeJSString(m[1] ?? m[2]);
+    const right = unescapeJSString(m[3] ?? m[4]);
+    pairs.push([left, right]);
+  }
+
+  return pairs.length > 0 ? pairs : null;
+}
+
+function extractKaTeXDelimiters(scriptText: string): MathDelimiters | null {
+  const delimMatch = scriptText.match(/delimiters\s*:\s*\[/);
+  if (!delimMatch) return null;
+
+  let depth = 0;
+  const start = delimMatch.index! + delimMatch[0].length - 1;
+  let end = start;
+  for (let i = start; i < scriptText.length; i++) {
+    if (scriptText[i] === '[') depth++;
+    else if (scriptText[i] === ']') depth--;
+    if (depth === 0) { end = i; break; }
+  }
+
+  const arrayText = scriptText.slice(start, end + 1);
+  const inlineMath: string[][] = [];
+  const displayMath: string[][] = [];
+
+  const entryRe = /\{([^}]+)\}/g;
+  let m;
+  while ((m = entryRe.exec(arrayText)) !== null) {
+    const entry = m[1];
+    const leftM = entry.match(/left\s*:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/);
+    const rightM = entry.match(/right\s*:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/);
+    const dispM = entry.match(/display\s*:\s*(true|false)/);
+    if (leftM && rightM) {
+      const left = unescapeJSString(leftM[1] ?? leftM[2]);
+      const right = unescapeJSString(rightM[1] ?? rightM[2]);
+      const isDisplay = dispM ? dispM[1] === 'true' : false;
+      (isDisplay ? displayMath : inlineMath).push([left, right]);
+    }
+  }
+
+  if (inlineMath.length === 0 && displayMath.length === 0) return null;
+  return { inlineMath, displayMath };
+}
+
+function extractMathDelimiters(html: string): MathDelimiters | null {
+  const hasMathJax = /<script[^>]*mathjax/i.test(html)
+    || /\bMathJax\s*=\s*\{/.test(html)
+    || /MathJax\.Hub\.Config/i.test(html);
+  const hasKaTeX = /<script[^>]*katex/i.test(html)
+    || /\brenderMathInElement\b/.test(html);
+
+  if (!hasMathJax && !hasKaTeX) return null;
+
+  const scriptContents: string[] = [];
+  const scriptRe = /<script\b[^>]*>([\s\S]*?)<\/script>/gi;
+  let sm;
+  while ((sm = scriptRe.exec(html)) !== null) {
+    if (sm[1].trim()) scriptContents.push(sm[1]);
+  }
+  const scriptText = scriptContents.join('\n');
+
+  const inlineMath = extractDelimiterPairs(scriptText, 'inlineMath');
+  const displayMath = extractDelimiterPairs(scriptText, 'displayMath');
+
+  if (inlineMath || displayMath) {
+    return {
+      inlineMath: inlineMath || SAFE_MATH_DELIMITERS.inlineMath,
+      displayMath: displayMath || SAFE_MATH_DELIMITERS.displayMath,
+    };
+  }
+
+  if (hasKaTeX) {
+    const katexDelims = extractKaTeXDelimiters(scriptText);
+    if (katexDelims) return katexDelims;
+  }
+
+  return SAFE_MATH_DELIMITERS;
+}
+
 export async function articleToEpub(
   url: string,
   preferredTitle: string | null
@@ -145,55 +261,62 @@ export async function articleToEpub(
     excerpt: article.excerpt?.slice(0, 120),
   });
 
-  // --- Pre-render MathJax equations to SVG
-  const tex = new TeX({
-    packages: AllPackages,
-    inlineMath: [['\\(', '\\)']],
-    displayMath: [['\\[', '\\]']],
-  });
-  const svg = new SVG({ fontCache: 'none' });
-  const mjDocument = mathjax.document(article.content, {
-    InputJax: tex,
-    OutputJax: svg,
-  });
-
-  mjDocument.render();
-
-  let processedContent = mathjaxAdaptor.innerHTML(mathjaxAdaptor.body(mjDocument.document));
-
-  // Write each MathJax SVG to a temp file and reference via file:// URL.
-  // - E-readers strip custom elements like <mjx-container>
-  // - Inline <svg> isn't valid in XHTML 1.1 (epub-gen's default doctype)
-  // - epub-gen copies file:// images into the EPUB package
+  // --- Detect math config and optionally pre-render equations to SVG ---
+  const mathDelimiters = extractMathDelimiters(body);
   const mathDir = join(tmpdir(), 'news2reader-math');
   mkdirSync(mathDir, { recursive: true });
   let mathIndex = 0;
-  processedContent = processedContent.replace(
-    /<mjx-container([^>]*)>([\s\S]*?)<\/mjx-container>/g,
-    (_match, attrs: string, inner: string) => {
-      const svgMatch = inner.match(/<svg[\s\S]*<\/svg>/);
-      if (!svgMatch) return inner;
-      const svgFixed = svgMatch[0].replace(/currentColor/g, '#000');
-      const filename = `math-${mathIndex++}.svg`;
-      writeFileSync(join(mathDir, filename), svgFixed);
-      const fileUrl = `file://${join(mathDir, filename)}`;
-      // Preserve vertical-align from the SVG's style for inline math baseline alignment
-      const alignMatch = svgFixed.match(/vertical-align:\s*([^;"]+)/);
-      const align = alignMatch ? alignMatch[1].trim() : '0';
-      const img = `<img src="${fileUrl}" style="vertical-align: ${align};" alt="math"/>`;
-      // Display math ($$...$$) should be block-level and centered
-      if (attrs.includes('display="true"')) {
-        return `<div style="text-align: center; margin: 1em 0;">${img}</div>`;
+  let processedContent = article.content;
+
+  if (mathDelimiters) {
+    console.log('Detected math delimiters:', JSON.stringify(mathDelimiters));
+    const tex = new TeX({
+      packages: AllPackages,
+      inlineMath: mathDelimiters.inlineMath,
+      displayMath: mathDelimiters.displayMath,
+    });
+    const svg = new SVG({ fontCache: 'none' });
+    const mjDocument = mathjax.document(processedContent, {
+      InputJax: tex,
+      OutputJax: svg,
+    });
+
+    mjDocument.render();
+
+    processedContent = mathjaxAdaptor.innerHTML(mathjaxAdaptor.body(mjDocument.document));
+
+    // Write each MathJax SVG to a temp file and reference via file:// URL.
+    // - E-readers strip custom elements like <mjx-container>
+    // - Inline <svg> isn't valid in XHTML 1.1 (epub-gen's default doctype)
+    // - epub-gen copies file:// images into the EPUB package
+    processedContent = processedContent.replace(
+      /<mjx-container([^>]*)>([\s\S]*?)<\/mjx-container>/g,
+      (_match: string, attrs: string, inner: string) => {
+        const svgMatch = inner.match(/<svg[\s\S]*<\/svg>/);
+        if (!svgMatch) return inner;
+        const svgFixed = svgMatch[0].replace(/currentColor/g, '#000');
+        const filename = `math-${mathIndex++}.svg`;
+        writeFileSync(join(mathDir, filename), svgFixed);
+        const fileUrl = `file://${join(mathDir, filename)}`;
+        // Preserve vertical-align from the SVG's style for inline math baseline alignment
+        const alignMatch = svgFixed.match(/vertical-align:\s*([^;"]+)/);
+        const align = alignMatch ? alignMatch[1].trim() : '0';
+        const img = `<img src="${fileUrl}" style="vertical-align: ${align};" alt="math"/>`;
+        if (attrs.includes('display="true"')) {
+          return `<div style="text-align: center; margin: 1em 0;">${img}</div>`;
+        }
+        return img;
       }
-      return img;
-    }
-  );
+    );
+  } else {
+    console.log('No math configuration detected, skipping MathJax processing');
+  }
 
   // Convert data: URI images to temp files. epub-gen doesn't handle data URIs —
   // it tries to use them as file paths, causing ENAMETOOLONG / ENOENT errors.
   processedContent = processedContent.replace(
     /(<img\b[^>]*\bsrc=")data:image\/([^;]+);base64,([^"]+)("[^>]*>)/gi,
-    (_match, before: string, ext: string, b64: string, after: string) => {
+    (_match: string, before: string, ext: string, b64: string, after: string) => {
       const filename = `img-${mathIndex++}.${ext.toLowerCase().replace('+xml', '')}`;
       writeFileSync(join(mathDir, filename), Buffer.from(b64, 'base64'));
       return `${before}file://${join(mathDir, filename)}${after}`;
