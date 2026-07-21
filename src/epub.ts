@@ -51,7 +51,9 @@ function unescapeJSString(s: string): string {
 }
 
 function extractDelimiterPairs(scriptText: string, key: string): string[][] | null {
-  const keyRe = new RegExp(key + '\\s*:\\s*\\[');
+  // Tolerate both bare JS object keys (inlineMath: [...]) and quoted JSON
+  // keys ("inlineMath": [...]).
+  const keyRe = new RegExp('"?' + key + '"?\\s*:\\s*\\[');
   const keyMatch = keyRe.exec(scriptText);
   if (!keyMatch) return null;
 
@@ -78,7 +80,7 @@ function extractDelimiterPairs(scriptText: string, key: string): string[][] | nu
 }
 
 function extractKaTeXDelimiters(scriptText: string): MathDelimiters | null {
-  const delimMatch = scriptText.match(/delimiters\s*:\s*\[/);
+  const delimMatch = scriptText.match(/"?delimiters"?\s*:\s*\[/);
   if (!delimMatch) return null;
 
   let depth = 0;
@@ -98,9 +100,9 @@ function extractKaTeXDelimiters(scriptText: string): MathDelimiters | null {
   let m;
   while ((m = entryRe.exec(arrayText)) !== null) {
     const entry = m[1];
-    const leftM = entry.match(/left\s*:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/);
-    const rightM = entry.match(/right\s*:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/);
-    const dispM = entry.match(/display\s*:\s*(true|false)/);
+    const leftM = entry.match(/"?left"?\s*:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/);
+    const rightM = entry.match(/"?right"?\s*:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/);
+    const dispM = entry.match(/"?display"?\s*:\s*(true|false)/);
     if (leftM && rightM) {
       const left = unescapeJSString(leftM[1] ?? leftM[2]);
       const right = unescapeJSString(rightM[1] ?? rightM[2]);
@@ -118,7 +120,11 @@ function extractMathDelimiters(html: string): MathDelimiters | null {
     || /\bMathJax\s*=\s*\{/.test(html)
     || /MathJax\.Hub\.Config/i.test(html);
   const hasKaTeX = /<script[^>]*katex/i.test(html)
-    || /\brenderMathInElement\b/.test(html);
+    || /\brenderMathInElement\b/.test(html)
+    // distill.pub-style templates declare delimiters as front-matter JSON
+    // (e.g. <d-front-matter><script type="application/json">{"katex": {"delimiters": [...]}}</script>)
+    // instead of a live katex script tag or renderMathInElement() call.
+    || /"katex"\s*:\s*\{/.test(html);
 
   if (!hasMathJax && !hasKaTeX) return null;
 
